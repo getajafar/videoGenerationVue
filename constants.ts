@@ -8,6 +8,31 @@ import {Video} from './types';
 const staticFilesUrl =
   'https://www.gstatic.com/aistudio/starter-apps/veo3-gallery/';
 
+/** Music tracks for video generation. */
+export const MUSIC_TRACKS = [
+  {id: 'none', name: 'None', prompt: ''},
+  {
+    id: 'upbeat-pop',
+    name: 'Upbeat Pop',
+    prompt: 'with upbeat, cheerful pop music in the background.',
+  },
+  {
+    id: 'cinematic-orchestral',
+    name: 'Cinematic Orchestral',
+    prompt: 'with dramatic, cinematic orchestral music in the background.',
+  },
+  {
+    id: 'lofi-hiphop',
+    name: 'Lofi Hiphop',
+    prompt: 'with relaxing lofi hiphop beats in the background.',
+  },
+  {
+    id: 'ambient',
+    name: 'Ambient',
+    prompt: 'with calm, ambient background music.',
+  },
+];
+
 /** Videos for the gallery. */
 export const MOCK_VIDEOS: Video[] = [
   {

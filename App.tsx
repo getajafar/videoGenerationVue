@@ -9,7 +9,7 @@ import {SearchIcon, VideoCameraIcon} from './components/icons';
 import {SavingProgressPage} from './components/SavingProgressPage';
 import {VideoGrid} from './components/VideoGrid';
 import {VideoPlayer} from './components/VideoPlayer';
-import {MOCK_VIDEOS} from './constants';
+import {MOCK_VIDEOS, MUSIC_TRACKS} from './constants';
 import {Video} from './types';
 
 import {GeneratedVideo, GoogleGenAI} from '@google/genai';
@@ -29,6 +29,79 @@ function bloblToBase64(blob: Blob) {
       resolve(url.split(',')[1]);
     };
     reader.readAsDataURL(blob);
+  });
+}
+
+async function addWatermarkToVideo(videoBlob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = URL.createObjectURL(videoBlob);
+    video.muted = true;
+    video.crossOrigin = 'anonymous';
+
+    video.onloadeddata = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        URL.revokeObjectURL(video.src);
+        return reject(new Error('Failed to get canvas context.'));
+      }
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
+        ? 'video/webm; codecs=vp9'
+        : 'video/webm';
+      const stream = canvas.captureStream();
+      const recorder = new MediaRecorder(stream, {mimeType});
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => {
+        URL.revokeObjectURL(video.src);
+        resolve(new Blob(chunks, {type: mimeType.split(';')[0]}));
+      };
+      recorder.onerror = (e) => {
+        URL.revokeObjectURL(video.src);
+        reject(e);
+      };
+
+      let frameId: number;
+      const renderFrame = () => {
+        if (video.paused || video.ended) {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+          if (frameId) {
+            cancelAnimationFrame(frameId);
+          }
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const fontSize = Math.max(16, Math.round(canvas.height / 36));
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('Veo 3 jaf', canvas.width - 10, canvas.height - 10);
+
+        frameId = requestAnimationFrame(renderFrame);
+      };
+
+      video.onplay = () => {
+        recorder.start();
+        renderFrame();
+      };
+
+      video.play().catch(reject);
+    };
+
+    video.onerror = (e) => {
+      URL.revokeObjectURL(video.src);
+      reject(e);
+    };
   });
 }
 
@@ -90,6 +163,7 @@ export const App: React.FC = () => {
   const [playingVideo, setPlayingVideo] = useState<Video | null>(null);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingMessage, setSavingMessage] = useState('');
   const [generationError, setGenerationError] = useState<string[] | null>(
     null,
   );
@@ -142,14 +216,19 @@ export const App: React.FC = () => {
 
   const handleSaveEdit = async (
     videoWithUpdatedDesc: Video,
-    config: {numberOfVideos: number; aspectRatio: string},
+    config: {numberOfVideos: number; aspectRatio: string; musicId: string},
   ) => {
     setEditingVideo(null);
     setIsSaving(true);
+    setSavingMessage('Generating your video...');
     setGenerationError(null);
 
     try {
-      const promptText = videoWithUpdatedDesc.description;
+      const musicTrack = MUSIC_TRACKS.find((t) => t.id === config.musicId);
+      const musicPrompt =
+        musicTrack && musicTrack.id !== 'none' ? ` ${musicTrack.prompt}` : '';
+      const promptText = `${videoWithUpdatedDesc.description}${musicPrompt}`;
+
       console.log('Generating video...', promptText);
       const videoObjects = await generateVideoFromText(
         promptText,
@@ -161,12 +240,20 @@ export const App: React.FC = () => {
         throw new Error('Video generation returned no data.');
       }
 
-      console.log('Generated video data received.');
+      console.log('Generated video data received. Applying watermark...');
+      setSavingMessage('Applying watermark...');
 
-      const mimeType = 'video/mp4';
+      const watermarkedVideoUrls = await Promise.all(
+        videoObjects.map(async (base64String) => {
+          const res = await fetch(`data:video/mp4;base64,${base64String}`);
+          const originalBlob = await res.blob();
+          const watermarkedBlob = await addWatermarkToVideo(originalBlob);
+          const watermarkedBase64 = await bloblToBase64(watermarkedBlob);
+          return `data:${watermarkedBlob.type};base64,${watermarkedBase64}`;
+        }),
+      );
 
-      const newVideos: Video[] = videoObjects.map((videoSrc, index) => {
-        const src = `data:${mimeType};base64,${videoSrc}`;
+      const newVideos: Video[] = watermarkedVideoUrls.map((videoSrc, index) => {
         return {
           id: self.crypto.randomUUID(),
           title:
@@ -176,7 +263,7 @@ export const App: React.FC = () => {
                 })`
               : `Remix of "${videoWithUpdatedDesc.title}"`,
           description: videoWithUpdatedDesc.description,
-          videoUrl: src,
+          videoUrl: videoSrc,
         };
       });
 
@@ -191,6 +278,7 @@ export const App: React.FC = () => {
       ]);
     } finally {
       setIsSaving(false);
+      setSavingMessage('');
     }
   };
 
@@ -218,7 +306,7 @@ export const App: React.FC = () => {
   );
 
   if (isSaving) {
-    return <SavingProgressPage />;
+    return <SavingProgressPage message={savingMessage} />;
   }
 
   return (

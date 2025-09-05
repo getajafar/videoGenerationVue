@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, {useState} from 'react';
+import {MUSIC_TRACKS} from '../constants';
 import {Video} from '../types';
 
 interface EditVideoPageProps {
   video: Video;
   onSave: (
     updatedVideo: Video,
-    config: {numberOfVideos: number; aspectRatio: string},
+    config: {numberOfVideos: number; aspectRatio: string; musicId: string},
   ) => void;
   onCancel: () => void;
 }
@@ -26,9 +27,10 @@ export const EditVideoPage: React.FC<EditVideoPageProps> = ({
   const [description, setDescription] = useState(video.description);
   const [numberOfVideos, setNumberOfVideos] = useState(1);
   const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [musicId, setMusicId] = useState('none');
 
   const handleSave = () => {
-    onSave({...video, description}, {numberOfVideos, aspectRatio});
+    onSave({...video, description}, {numberOfVideos, aspectRatio, musicId});
   };
 
   return (
@@ -92,6 +94,24 @@ export const EditVideoPage: React.FC<EditVideoPageProps> = ({
                 <option value="3:4">3:4 (Tall)</option>
               </select>
             </div>
+          </div>
+          <div className="mb-6">
+            <label
+              htmlFor="music"
+              className="block text-sm font-medium text-gray-300 mb-2">
+              Background Music
+            </label>
+            <select
+              id="music"
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-shadow duration-200"
+              value={musicId}
+              onChange={(e) => setMusicId(e.target.value)}>
+              {MUSIC_TRACKS.map((track) => (
+                <option key={track.id} value={track.id}>
+                  {track.name}
+                </option>
+              ))}
+            </select>
           </div>
         </main>
 
